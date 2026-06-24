@@ -167,7 +167,7 @@ export function Goals({ goals }: Props) {
   }
 
   return (
-    <div className="bg-[#242424] rounded-xl p-4 flex flex-col gap-4">
+    <div className="bg-[#242424] rounded-xl p-4 flex flex-col gap-4 h-full">
       <div className="flex items-center justify-between">
         <div className="text-xs text-gray-500 uppercase tracking-wider font-medium">Objetivos</div>
         <button

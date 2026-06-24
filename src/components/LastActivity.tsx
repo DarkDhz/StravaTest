@@ -18,7 +18,7 @@ function StatItem({ icon, label, value }: { icon: React.ReactNode; label: string
 
 export function LastActivity({ activity }: Props) {
   return (
-    <div className="bg-[#242424] rounded-xl p-4 flex flex-col gap-3">
+    <div className="bg-[#242424] rounded-xl p-4 flex flex-col gap-3 h-full">
       <div className="flex items-center justify-between">
         <div className="text-xs text-gray-500 uppercase tracking-wider font-medium">Última actividad</div>
         <div className="text-[#FC4C02]">
