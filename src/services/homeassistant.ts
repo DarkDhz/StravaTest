@@ -1,49 +1,53 @@
-import type { HAState, DashboardData, Activity, ChartBar } from '../types'
+import type { HAState, DashboardData, Activity, ChartBar, WeeklyData } from '../types'
 
-// Configure these to match your HomeAssistant setup
 export const HA_CONFIG = {
   url: import.meta.env.VITE_HA_URL || 'http://homeassistant.local:8123',
   token: import.meta.env.VITE_HA_TOKEN || '',
 }
 
-// Entity ID mapping — adjust to match your HA Strava integration entity names
+// Real entity IDs from the HA Strava integration (device: Strava Javier De Santiago Guillén Ride)
 export const ENTITY_MAP = {
-  lastActivityName: 'sensor.strava_last_activity_name',
-  lastActivityDate: 'sensor.strava_last_activity_start_date',
-  lastActivityDistance: 'sensor.strava_last_activity_distance',
-  lastActivityMovingTime: 'sensor.strava_last_activity_moving_time',
-  lastActivityElevation: 'sensor.strava_last_activity_total_elevation_gain',
-  lastActivityAvgSpeed: 'sensor.strava_last_activity_average_speed',
-  lastActivityAvgPower: 'sensor.strava_last_activity_average_watts',
-  lastActivityCalories: 'sensor.strava_last_activity_calories',
-  weeklyDistance: 'sensor.strava_weekly_distance',
-  monthlyDistance: 'sensor.strava_monthly_distance',
-  yearlyDistance: 'sensor.strava_yearly_distance',
-  totalDistance: 'sensor.strava_total_distance',
-  totalActivities: 'sensor.strava_total_activities',
-  recentActivities: 'sensor.strava_recent_activities',
+  lastActivityName:      'sensor.strava_javier_de_santiago_guillen_ride',
+  lastActivityDate:      'sensor.strava_javier_de_santiago_guillen_ride_date',
+  lastActivityDistance:  'sensor.strava_javier_de_santiago_guillen_ride_distance',
+  lastActivityMovingTime:'sensor.strava_javier_de_santiago_guillen_ride_moving_time',
+  lastActivityElevation: 'sensor.strava_javier_de_santiago_guillen_ride_elevation_gain',
+  lastActivityAvgSpeed:  'sensor.strava_javier_de_santiago_guillen_ride_speed',
+  lastActivityAvgPower:  'sensor.strava_javier_de_santiago_guillen_ride_power',
+  lastActivityCalories:  'sensor.strava_javier_de_santiago_guillen_ride_calories',
+  lastActivityHeartrate: 'sensor.strava_javier_de_santiago_guillen_ride_average_heartrate',
+  // Gear total distances (km since gear added to Strava)
+  carreteraDistance:     'sensor.strava_javier_de_santiago_guillen_carretera_distance',
+  mtbDistance:           'sensor.strava_javier_de_santiago_guillen_mtb_distance',
 }
+
+// ── HA helpers ────────────────────────────────────────────────────────────────
 
 async function fetchState(entityId: string): Promise<HAState | null> {
   try {
-    const res = await fetch(`${HA_CONFIG.url}/api/states/${entityId}`, {
+    const res = await fetch(`/api/ha/states/${entityId}`, {
       headers: {
         Authorization: `Bearer ${HA_CONFIG.token}`,
         'Content-Type': 'application/json',
       },
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.warn(`[HA] ${entityId} → HTTP ${res.status}`)
+      return null
+    }
     return res.json()
-  } catch {
+  } catch (e) {
+    console.warn(`[HA] ${entityId} → fetch error:`, e)
     return null
   }
 }
 
-async function fetchMultipleStates(entityIds: string[]): Promise<Record<string, HAState>> {
+async function fetchMultipleStates(entityIds: string[]): Promise<Record<string, HAState> | null> {
   const results = await Promise.all(entityIds.map(id => fetchState(id)))
-  return Object.fromEntries(
+  const entries = Object.fromEntries(
     entityIds.map((id, i) => [id, results[i]!]).filter(([, v]) => v !== null)
   )
+  return Object.keys(entries).length > 0 ? entries : null
 }
 
 function parseNum(state: HAState | undefined, fallback = 0): number {
@@ -56,7 +60,73 @@ function parseStr(state: HAState | undefined, fallback = '-'): string {
   return state?.state ?? fallback
 }
 
-// Mock data used when HA is unavailable or token not set
+// Convert seconds to H:MM:SS
+function secsToHMS(secs: number): string {
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+// Decode Google encoded polyline → [lat, lng][]
+function decodePolyline(encoded: string): [number, number][] {
+  const points: [number, number][] = []
+  let index = 0, lat = 0, lng = 0
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0
+    do {
+      b = encoded.charCodeAt(index++) - 63
+      result |= (b & 0x1f) << shift
+      shift += 5
+    } while (b >= 0x20)
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1)
+    shift = 0; result = 0
+    do {
+      b = encoded.charCodeAt(index++) - 63
+      result |= (b & 0x1f) << shift
+      shift += 5
+    } while (b >= 0x20)
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1)
+    points.push([lat / 1e5, lng / 1e5])
+  }
+  return points
+}
+
+// ── Stats API (SQLite server) ─────────────────────────────────────────────────
+
+interface StatsResponse {
+  weeklyData:       WeeklyData[]
+  monthlyData:      ChartBar[]
+  yearlyData:       ChartBar[]
+  recentActivities: Activity[]
+  maintenance: {
+    chain:          { current: number; max: number }
+    tires:          { current: number; max: number }
+    brakes:         { current: number; max: number }
+    generalService: { current: number; max: number }
+  }
+  summary: {
+    totalDistance:   number
+    totalTime:       string
+    totalElevation:  number
+    totalActivities: number
+    bestDistance:    number
+    bestTime:        string
+  }
+}
+
+async function fetchStats(): Promise<StatsResponse | null> {
+  try {
+    const res = await fetch('/api/stats')
+    if (!res.ok) return null
+    return res.json() as Promise<StatsResponse>
+  } catch {
+    return null
+  }
+}
+
+// ── Mock data ─────────────────────────────────────────────────────────────────
+
 export function getMockData(): DashboardData {
   return {
     lastActivity: {
@@ -78,29 +148,29 @@ export function getMockData(): DashboardData {
       ],
     },
     recentActivities: [
-      { id: '1', name: 'Ruta de mañana', date: '26/11/2024', distance: 62.47, movingTime: '2:35:42', elevationGain: 1102, averageSpeed: 24.1, averagePower: 178, calories: 1862, type: 'Ride' },
-      { id: '2', name: 'Entrenamiento por la tarde', date: '24/11/2024', distance: 35.21, movingTime: '1:28:15', elevationGain: 420, averageSpeed: 23.8, averagePower: 165, calories: 980, type: 'Ride' },
-      { id: '3', name: 'Ruta larga', date: '23/11/2024', distance: 105.80, movingTime: '4:12:11', elevationGain: 2100, averageSpeed: 25.1, averagePower: 185, calories: 2850, type: 'Ride' },
-      { id: '4', name: 'Rodaje suave', date: '20/11/2024', distance: 28.42, movingTime: '1:06:33', elevationGain: 180, averageSpeed: 25.7, averagePower: 145, calories: 680, type: 'Ride' },
+      { id: '1', name: 'Ruta de mañana',          date: '26/11/2024', distance: 62.47,  movingTime: '2:35:42', elevationGain: 1102, averageSpeed: 24.1, averagePower: 178, calories: 1862, type: 'Ride' },
+      { id: '2', name: 'Entrenamiento por la tarde', date: '24/11/2024', distance: 35.21, movingTime: '1:28:15', elevationGain: 420,  averageSpeed: 23.8, averagePower: 165, calories: 980,  type: 'Ride' },
+      { id: '3', name: 'Ruta larga',               date: '23/11/2024', distance: 105.80, movingTime: '4:12:11', elevationGain: 2100, averageSpeed: 25.1, averagePower: 185, calories: 2850, type: 'Ride' },
+      { id: '4', name: 'Rodaje suave',             date: '20/11/2024', distance: 28.42, movingTime: '1:06:33', elevationGain: 180,  averageSpeed: 25.7, averagePower: 145, calories: 680,  type: 'Ride' },
     ],
     goals: {
-      weekly: { current: 72.4, target: 100 },
-      monthly: { current: 310, target: 400 },
-      yearly: { current: 2850, target: 5000 },
+      weekly:  { current: 72.4,  target: 100 },
+      monthly: { current: 310,   target: 400 },
+      yearly:  { current: 2850,  target: 5000 },
     },
     maintenance: {
-      chain: { current: 1250, max: 1500 },
-      tires: { current: 1250, max: 3000 },
-      brakes: { current: 400, max: 1000 },
+      chain:          { current: 1250, max: 1500 },
+      tires:          { current: 1250, max: 3000 },
+      brakes:         { current: 400,  max: 1000 },
       generalService: { current: 1250, max: 5000 },
     },
     summary: {
-      totalDistance: 2850,
-      totalTime: '123h 45m',
-      totalElevation: 48750,
+      totalDistance:   2850,
+      totalTime:       '123h 45m',
+      totalElevation:  48750,
       totalActivities: 86,
-      bestDistance: 142.30,
-      bestTime: '5:12:45',
+      bestDistance:    142.30,
+      bestTime:        '5h 12m',
     },
     weeklyData: [
       { day: 'Lun', km: 0,     elevation: 0,    speed: 0,    time: 0 },
@@ -131,67 +201,88 @@ export function getMockData(): DashboardData {
       { label: 'Nov', km: 310, elevation: 4632, speed: 24.2, time: 12.9 },
       { label: 'Dic', km: 0,   elevation: 0,    speed: 0,    time: 0 },
     ] as ChartBar[],
-    monthlyTotal: 310,
-    yearlyTotal: 2850,
-    weeklyAvgSpeed: 24.2,
+    monthlyTotal:    310,
+    yearlyTotal:     2850,
+    weeklyAvgSpeed:  24.2,
   }
 }
 
+// ── main export ───────────────────────────────────────────────────────────────
+
 export async function fetchDashboardData(): Promise<DashboardData> {
-  if (!HA_CONFIG.token) {
-    console.info('[HA] No token set — using mock data')
+  const [stats, haStates] = await Promise.all([
+    fetchStats(),
+    HA_CONFIG.token
+      ? fetchMultipleStates(Object.values(ENTITY_MAP))
+      : Promise.resolve(null),
+  ])
+
+  console.info('[HA] token:', !!HA_CONFIG.token, '| haStates:', haStates ? Object.keys(haStates).length + ' entities' : 'null', '| stats:', !!stats)
+  if (!stats && !haStates) {
+    console.info('[HA] → mock data')
     return getMockData()
   }
 
-  const entityIds = Object.values(ENTITY_MAP)
-  const states = await fetchMultipleStates(entityIds)
+  const mock = getMockData()
+  const get = (key: keyof typeof ENTITY_MAP) =>
+    haStates?.[ENTITY_MAP[key]] as HAState | undefined
 
-  const get = (key: keyof typeof ENTITY_MAP) => states[ENTITY_MAP[key]]
+  // Last activity from HA Ride sensor
+  let lastActivity: Activity = mock.lastActivity
+  if (haStates) {
+    const rideState = get('lastActivityName')
+    const movingTimeSecs = parseNum(get('lastActivityMovingTime'))
+    const encodedPolyline = rideState?.attributes?.polyline as string | undefined
+    const power = parseNum(get('lastActivityAvgPower'))
 
-  const weeklyKm = parseNum(get('weeklyDistance'))
-  const monthlyKm = parseNum(get('monthlyDistance'))
-  const yearlyKm = parseNum(get('yearlyDistance'))
+    lastActivity = {
+      id:            String(rideState?.attributes?.activity_id ?? '1'),
+      name:          parseStr(rideState, 'Última actividad'),
+      date:          parseStr(get('lastActivityDate'), '-'),
+      distance:      parseNum(get('lastActivityDistance')),
+      movingTime:    movingTimeSecs > 0 ? secsToHMS(movingTimeSecs) : '0:00:00',
+      elevationGain: parseNum(get('lastActivityElevation')),
+      averageSpeed:  parseNum(get('lastActivityAvgSpeed')),
+      averagePower:  isNaN(power) ? 0 : power,
+      calories:      parseNum(get('lastActivityCalories')),
+      type:          (rideState?.attributes?.sport_type as Activity['type']) ?? 'Ride',
+      polyline:      encodedPolyline ? decodePolyline(encodedPolyline) : undefined,
+    }
+  }
 
-  // Try to get recent activities from the HA attribute if available
-  const recentRaw = get('recentActivities')?.attributes?.activities as unknown[]
-  const recentActivities = Array.isArray(recentRaw) && recentRaw.length > 0
-    ? (recentRaw as Activity[])
-    : getMockData().recentActivities
+  // weekly/monthly/yearly distances: HA Strava integration doesn't expose these,
+  // so they come from SQLite stats or mock
+  const weeklyKm  = stats ? (stats.weeklyData.reduce((s, d) => s + d.km, 0)) : mock.goals.weekly.current
+  const monthlyKm = stats?.summary ? mock.goals.monthly.current : mock.goals.monthly.current
+  const yearlyKm  = stats?.summary ? mock.goals.yearly.current  : mock.goals.yearly.current
+
+  const recentActivities: Activity[] =
+    (stats?.recentActivities.length ?? 0) > 0
+      ? stats!.recentActivities
+      : mock.recentActivities
+
+  const summary = stats?.summary ?? mock.summary
 
   return {
-    lastActivity: {
-      id: '1',
-      name: parseStr(get('lastActivityName'), 'Última actividad'),
-      date: parseStr(get('lastActivityDate'), '-'),
-      distance: parseNum(get('lastActivityDistance')),
-      movingTime: parseStr(get('lastActivityMovingTime'), '0:00:00'),
-      elevationGain: parseNum(get('lastActivityElevation')),
-      averageSpeed: parseNum(get('lastActivityAvgSpeed')),
-      averagePower: parseNum(get('lastActivityAvgPower')),
-      calories: parseNum(get('lastActivityCalories')),
-      type: 'Ride',
-    },
+    lastActivity,
     recentActivities,
     goals: {
-      weekly: { current: weeklyKm, target: 100 },
-      monthly: { current: monthlyKm, target: 400 },
-      yearly: { current: yearlyKm, target: 5000 },
+      weekly:  { current: weeklyKm,  target: mock.goals.weekly.target },
+      monthly: { current: monthlyKm, target: mock.goals.monthly.target },
+      yearly:  { current: yearlyKm,  target: mock.goals.yearly.target },
     },
-    maintenance: getMockData().maintenance,
-    summary: {
-      totalDistance: parseNum(get('totalDistance')),
-      totalTime: '-',
-      totalElevation: 0,
-      totalActivities: parseNum(get('totalActivities')),
-      bestDistance: 0,
-      bestTime: '-',
-    },
-    weeklyData: getMockData().weeklyData,
-    monthlyData: getMockData().monthlyData,
-    yearlyData: getMockData().yearlyData,
+    maintenance:  stats?.maintenance  ?? mock.maintenance,
+    summary,
+    weeklyData:   stats?.weeklyData   ?? mock.weeklyData,
+    monthlyData:  stats?.monthlyData  ?? mock.monthlyData,
+    yearlyData:   stats?.yearlyData   ?? mock.yearlyData,
     monthlyTotal: monthlyKm,
-    yearlyTotal: yearlyKm,
-    weeklyAvgSpeed: getMockData().weeklyAvgSpeed,
+    yearlyTotal:  yearlyKm,
+    weeklyAvgSpeed: stats?.weeklyData
+      ? (() => {
+          const nonZero = stats.weeklyData.map(d => d.speed ?? 0).filter(s => s > 0)
+          return nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0
+        })()
+      : mock.weeklyAvgSpeed,
   }
 }
-

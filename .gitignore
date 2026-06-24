@@ -4,3 +4,5 @@ dist/
 *.local
 *.tsbuildinfo
 credenciales.md
+strava-stats.db
+strava-stats.db-*
