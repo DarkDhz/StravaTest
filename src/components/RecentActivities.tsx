@@ -17,7 +17,7 @@ function BikeIcon() {
 
 export function RecentActivities({ activities }: Props) {
   return (
-    <div className="bg-[#242424] rounded-xl p-4 flex flex-col">
+    <div className="bg-[#242424] rounded-xl p-4 flex flex-col h-full">
       <div className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Actividades recientes</div>
 
       <div className="flex flex-col divide-y divide-[#333] flex-1">
@@ -28,7 +28,11 @@ export function RecentActivities({ activities }: Props) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-white text-sm font-medium truncate">{act.name}</div>
-              <div className="text-gray-500 text-xs">{act.date}</div>
+              <div className="text-gray-500 text-xs">
+                {act.date}
+                {act.averageSpeed > 0 && <span className="ml-2 text-gray-600">· {act.averageSpeed.toFixed(1)} km/h</span>}
+                {act.averagePower > 0 && <span className="ml-1 text-gray-600">· {act.averagePower} W</span>}
+              </div>
             </div>
             <div className="text-right shrink-0">
               <div className="text-white text-sm font-semibold">

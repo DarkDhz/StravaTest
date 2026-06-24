@@ -38,9 +38,12 @@ export default function App() {
           <div className="sm:col-span-2 lg:col-span-2">
             <KilometersChart
               weeklyData={data.weeklyData}
+              monthlyData={data.monthlyData}
+              yearlyData={data.yearlyData}
               weeklyTotal={data.goals.weekly.current}
               monthlyTotal={data.monthlyTotal}
               yearlyTotal={data.yearlyTotal}
+              weeklyAvgSpeed={data.weeklyAvgSpeed}
             />
           </div>
           <div className="sm:col-span-1 lg:col-span-1">

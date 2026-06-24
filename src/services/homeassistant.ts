@@ -1,4 +1,4 @@
-import type { HAState, DashboardData, Activity } from '../types'
+import type { HAState, DashboardData, Activity, ChartBar } from '../types'
 
 // Configure these to match your HomeAssistant setup
 export const HA_CONFIG = {
@@ -103,16 +103,37 @@ export function getMockData(): DashboardData {
       bestTime: '5:12:45',
     },
     weeklyData: [
-      { day: 'Lun', km: 0 },
-      { day: 'Mar', km: 35.21 },
-      { day: 'Mié', km: 0 },
-      { day: 'Jue', km: 0 },
-      { day: 'Vie', km: 0 },
-      { day: 'Sáb', km: 62.47 },
-      { day: 'Dom', km: 10.23 },
+      { day: 'Lun', km: 0,     elevation: 0,    speed: 0,    time: 0 },
+      { day: 'Mar', km: 35.21, elevation: 420,  speed: 23.8, time: 1.47 },
+      { day: 'Mié', km: 0,     elevation: 0,    speed: 0,    time: 0 },
+      { day: 'Jue', km: 0,     elevation: 0,    speed: 0,    time: 0 },
+      { day: 'Vie', km: 0,     elevation: 0,    speed: 0,    time: 0 },
+      { day: 'Sáb', km: 62.47, elevation: 1102, speed: 24.1, time: 2.60 },
+      { day: 'Dom', km: 10.23, elevation: 180,  speed: 25.7, time: 0.65 },
     ],
+    monthlyData: [
+      { label: 'S1', km: 85,   elevation: 2100, speed: 24.5, time: 5.3 },
+      { label: 'S2', km: 82,   elevation: 1850, speed: 23.9, time: 4.9 },
+      { label: 'S3', km: 70.6, elevation: 980,  speed: 24.8, time: 3.5 },
+      { label: 'S4', km: 72.4, elevation: 1702, speed: 24.2, time: 4.7 },
+    ] as ChartBar[],
+    yearlyData: [
+      { label: 'Ene', km: 250, elevation: 3750, speed: 23.5, time: 10.4 },
+      { label: 'Feb', km: 180, elevation: 2700, speed: 24.1, time: 7.5 },
+      { label: 'Mar', km: 320, elevation: 4800, speed: 24.8, time: 13.3 },
+      { label: 'Abr', km: 390, elevation: 5850, speed: 25.2, time: 16.3 },
+      { label: 'May', km: 360, elevation: 5400, speed: 25.5, time: 15.0 },
+      { label: 'Jun', km: 280, elevation: 4200, speed: 24.9, time: 11.7 },
+      { label: 'Jul', km: 130, elevation: 1950, speed: 23.8, time: 5.4 },
+      { label: 'Ago', km: 170, elevation: 2550, speed: 24.5, time: 7.1 },
+      { label: 'Sep', km: 270, elevation: 4050, speed: 25.1, time: 11.3 },
+      { label: 'Oct', km: 190, elevation: 2850, speed: 24.3, time: 7.9 },
+      { label: 'Nov', km: 310, elevation: 4632, speed: 24.2, time: 12.9 },
+      { label: 'Dic', km: 0,   elevation: 0,    speed: 0,    time: 0 },
+    ] as ChartBar[],
     monthlyTotal: 310,
     yearlyTotal: 2850,
+    weeklyAvgSpeed: 24.2,
   }
 }
 
@@ -166,8 +187,11 @@ export async function fetchDashboardData(): Promise<DashboardData> {
       bestTime: '-',
     },
     weeklyData: getMockData().weeklyData,
+    monthlyData: getMockData().monthlyData,
+    yearlyData: getMockData().yearlyData,
     monthlyTotal: monthlyKm,
     yearlyTotal: yearlyKm,
+    weeklyAvgSpeed: getMockData().weeklyAvgSpeed,
   }
 }
 

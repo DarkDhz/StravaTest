@@ -37,6 +37,17 @@ export interface PerformanceSummary {
 export interface WeeklyData {
   day: string
   km: number
+  elevation?: number  // metres
+  speed?: number      // km/h average
+  time?: number       // hours
+}
+
+export interface ChartBar {
+  label: string
+  km: number
+  elevation?: number  // metres
+  speed?: number      // km/h average
+  time?: number       // hours
 }
 
 export interface DashboardData {
@@ -46,8 +57,11 @@ export interface DashboardData {
   maintenance: BikeMaintenance
   summary: PerformanceSummary
   weeklyData: WeeklyData[]
+  monthlyData: ChartBar[]
+  yearlyData: ChartBar[]
   monthlyTotal: number
   yearlyTotal: number
+  weeklyAvgSpeed?: number
 }
 
 export interface HAState {
