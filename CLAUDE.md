@@ -27,6 +27,28 @@ HomeAssistant REST API  ──►  homeassistant.ts  ──►  useDashboard hoo
 - **`src/hooks/useDashboard.ts`** — wraps `fetchDashboardData()` with a polling interval (default 60 s) and exposes `{ data, loading, lastRefresh, refresh }`.
 - **`src/types/index.ts`** — all shared interfaces (`Activity`, `Goals`, `BikeMaintenance`, `PerformanceSummary`, `DashboardData`, `HAState`).
 
+### Partially wired HA fields
+
+`fetchDashboardData()` currently falls back to `getMockData()` for fields without real sensors yet:
+
+| Field | Status |
+|---|---|
+| `lastActivity.*`, `goals.*.current`, distance totals | Wired to HA sensors |
+| `maintenance.*`, `weeklyData`, `lastActivity.polyline` | Still using mock data |
+
+When wiring a new field: add its entity ID to `ENTITY_MAP` and replace the `getMockData()` call in `fetchDashboardData()`.
+
+### User-configurable settings (localStorage)
+
+Two components manage their own thresholds via `localStorage`, bypassing the hardcoded values in `homeassistant.ts`:
+
+| Key | Component | What it stores |
+|---|---|---|
+| `goal-targets` | `Goals` | weekly / monthly / yearly km targets |
+| `maintenance-thresholds` | `BikeMaintenance` | max km per component before service |
+
+The stored values take precedence over `goals.*.target` / `maintenance.*.max` from the data props. Both components expose a gear-icon button that opens a config popup.
+
 ### Components (one per dashboard card)
 
 | Component | Card |
@@ -34,10 +56,10 @@ HomeAssistant REST API  ──►  homeassistant.ts  ──►  useDashboard hoo
 | `Header` | Top bar — live clock, date, refresh button |
 | `LastActivity` | Last activity stats (6 metrics) |
 | `ActivityMap` | Leaflet map with Strava route polyline |
-| `Goals` | Weekly / monthly / yearly km progress bars |
+| `Goals` | Weekly / monthly / yearly km progress bars + config popup |
 | `RecentActivities` | Last 4 activities list |
 | `KilometersChart` | Custom SVG bar chart — week/month/year tabs |
-| `BikeMaintenance` | Component wear progress bars |
+| `BikeMaintenance` | Component wear progress bars + config popup |
 | `PerformanceSummary` | Full-width bottom summary strip |
 
 Layout is a 4-column CSS grid (rows: activity+map+goals → recent+chart+maintenance → summary). Below `sm` breakpoint it collapses to a single column.
@@ -50,6 +72,22 @@ Layout is a 4-column CSS grid (rows: activity+map+goals → recent+chart+mainten
 
 `ActivityMap` lazy-imports Leaflet (`import('leaflet')`) and renders CartoDB Dark Matter tiles. The `activity.polyline` field is `[lat, lng][]`. A loading overlay (`!tilesLoaded` state) hides until the tile layer fires its `load` event.
 
+### CSS design tokens
+
+Global CSS variables are defined in `src/index.css` — prefer these over hardcoded hex values:
+
+```css
+--strava-orange: #FC4C02
+--bg-primary:    #1a1a1a
+--bg-card:       #242424
+--bg-card-hover: #2a2a2a
+--border-color:  #333333
+--text-secondary: #9ca3af
+--green:         #22c55e
+```
+
+The `.progress-bar` / `.progress-bar-fill` utility classes are also defined there.
+
 ## Environment
 
 Copy `.env.example` to `.env` and fill in:
@@ -59,7 +97,7 @@ VITE_HA_URL=http://<ha-ip>:8123
 VITE_HA_TOKEN=<long-lived-access-token>
 ```
 
-Goal targets (weekly 100 km, monthly 400 km, yearly 5000 km) and maintenance thresholds are hardcoded in `homeassistant.ts` — adjust in `fetchDashboardData()` and `getMockData()`.
+Default goal targets (weekly 100 km, monthly 400 km, yearly 5000 km) and maintenance thresholds are hardcoded in `homeassistant.ts` as fallback defaults; users override them via the in-app config popups (stored in `localStorage`).
 
 ## Deployment
 
